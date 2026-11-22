@@ -31,3 +31,6 @@ def leer_argumentos(texto):
 # TODO: ejecutar_tool(nombre, argumentos_json) -> dict con "ok" True/False
 #       (tool desconocida, JSON roto, datos invalidos o campos inventados -> ok False con el error)
 # TODO: responder(mensajes, llm) -> ChatSalida, con el bucle LLM -> tool -> LLM (maximo MAX_VUELTAS)
+
+def responder(mensajes, llm):
+    pass
