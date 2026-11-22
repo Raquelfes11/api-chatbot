@@ -32,5 +32,61 @@ def leer_argumentos(texto):
 #       (tool desconocida, JSON roto, datos invalidos o campos inventados -> ok False con el error)
 # TODO: responder(mensajes, llm) -> ChatSalida, con el bucle LLM -> tool -> LLM (maximo MAX_VUELTAS)
 
+def definir_tool():
+    return {
+        "type": "function",
+        "function": {
+            "name": NOMBRE_TOOL,
+            "description": "Calcula la probabilidad de impago de un prestamo y devuelve una decision.",
+            "parameters": PrestamoEntrada.model_json_schema(),
+        },
+    }
+
+def ejecutar_tool(nombre, argumentos_json):
+    if nombre != NOMBRE_TOOL:
+        return {"ok": False, "error": "Tool desconocida: " + str(nombre)}
+
+    argumentos = leer_argumentos(argumentos_json)
+    try:
+        entrada = PrestamoEntrada(**argumentos)
+    except ValidationError as e:
+        return {"ok": False, "error": str(e)}
+
+    resultado = predecir(entrada)
+    return {"ok": True, **resultado.model_dump()}
+
 def responder(mensajes, llm):
-    pass
+    historial = [{"role": "system", "content": SISTEMA}]
+    for m in mensajes:
+        historial.append(m.model_dump())
+    herramientas = [definir_tool()]
+    ultima_herramienta = None
+
+    for _ in range(MAX_VUELTAS):
+        respuesta = llm.completar(historial, herramientas)
+        llamadas = respuesta.get("tool_calls")
+
+        if not llamadas:
+            return ChatSalida(respuesta=respuesta["content"], herramienta=ultima_herramienta)
+
+        historial.append(respuesta)
+        for llamada in llamadas:
+            nombre = llamada["function"]["name"]
+            argumentos_json = llamada["function"]["arguments"]
+            resultado = ejecutar_tool(nombre, argumentos_json)
+
+            historial.append({
+                "role": "tool",
+                "tool_call_id": llamada["id"],
+                "content": json.dumps(resultado),
+            })
+            ultima_herramienta = HerramientaUsada(
+                nombre=nombre,
+                argumentos=leer_argumentos(argumentos_json),
+                resultado=resultado,
+            )
+
+    return ChatSalida(
+        respuesta="No he podido completar la solicitud. Revisa los datos e intentalo de nuevo.",
+        herramienta=ultima_herramienta,
+    )
